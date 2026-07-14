@@ -9,6 +9,29 @@ const commands = [
     description: 'Submit a private server for moderator review',
   },
   {
+    name: 'managegames',
+    description: 'Manage the game list used in /addserver (owner only)',
+    options: [
+      {
+        name: 'add',
+        description: 'Add a game to the list',
+        type: 1, // SUB_COMMAND
+        options: [{ name: 'name', description: 'Game name', type: 3, required: true }],
+      },
+      {
+        name: 'remove',
+        description: 'Remove a game from the list',
+        type: 1,
+        options: [{ name: 'name', description: 'Game name', type: 3, required: true }],
+      },
+      {
+        name: 'list',
+        description: 'Show the current game list',
+        type: 1,
+      },
+    ],
+  },
+  {
     name: 'serverlist',
     description: 'Browse approved private servers',
     options: [

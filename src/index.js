@@ -59,24 +59,71 @@ async function handleCommand(interaction, env, ctx) {
     if (name === 'ping') {
       const createdAt = snowflakeToTimestamp(interaction.id);
       const latencyMs = Date.now() - createdAt;
-      return json(reply(`Latency: **${latencyMs}ms**`, true));
+      return json(reply(`🏓 Pong! Latency: **${latencyMs}ms**`, true));
     }
 
     if (name === 'addserver') {
+      const games = await getGameList(env);
+      if (games.length === 0) {
+        return json(reply('No games have been configured yet. Ask an owner to run `/managegames add <name>` first.', true));
+      }
+
       return json({
-        type: 9, // MODAL
+        type: 4,
         data: {
-          custom_id: 'addserver_modal',
-          title: 'Submit a Private Server',
+          content: 'Select the game your server is for:',
+          flags: 64,
           components: [
-            textInputRow('server_name', 'Server Name', 1, true, 100),
-            textInputRow('server_region', 'Server Region', 1, true, 60),
-            textInputRow('server_game', 'Game', 1, true, 60),
-            textInputRow('server_about', 'About Server', 2, true, 500),
-            textInputRow('server_link', 'Server Discord Link', 1, true, 200),
+            {
+              type: 1,
+              components: [
+                {
+                  type: 3, // STRING_SELECT
+                  custom_id: 'addserver_game_select',
+                  placeholder: 'Choose a game',
+                  options: games.slice(0, 25).map((g) => ({ label: g, value: g })),
+                },
+              ],
+            },
           ],
         },
       });
+    }
+
+    if (name === 'managegames') {
+      const requesterId = interaction.member?.user?.id || interaction.user?.id;
+      if (requesterId !== env.OWNER_ID) {
+        return json(reply("You don't have permission to do this.", true));
+      }
+
+      const sub = interaction.data.options[0];
+      const gameName = sub.options.find((o) => o.name === 'name')?.value?.trim();
+      const games = await getGameList(env);
+
+      if (sub.name === 'add') {
+        if (games.length >= 25) {
+          return json(reply('The game list is full (25 max — a Discord dropdown limit).', true));
+        }
+        if (games.some((g) => g.toLowerCase() === gameName.toLowerCase())) {
+          return json(reply(`**${gameName}** is already in the list.`, true));
+        }
+        games.push(gameName);
+        await env.DATA.put('config:games', JSON.stringify(games));
+        return json(reply(`Added **${gameName}** to the game list.`, true));
+      }
+
+      if (sub.name === 'remove') {
+        const filtered = games.filter((g) => g.toLowerCase() !== gameName.toLowerCase());
+        if (filtered.length === games.length) {
+          return json(reply(`**${gameName}** wasn't found in the list.`, true));
+        }
+        await env.DATA.put('config:games', JSON.stringify(filtered));
+        return json(reply(`Removed **${gameName}** from the game list.`, true));
+      }
+
+      if (sub.name === 'list') {
+        return json(reply(games.length ? `Current games:\n${games.join(', ')}` : 'No games configured yet.', true));
+      }
     }
 
     if (name === 'serverlist') {
@@ -99,7 +146,6 @@ async function handleCommand(interaction, env, ctx) {
 
       const server = JSON.parse(raw);
       await env.DATA.delete(`server:${id}`);
-      await removeFromApprovedIndex(env, id);
       return json(reply(`Removed **${server.name}** (${server.game}) from the server list.`, true));
     }
 
@@ -181,8 +227,14 @@ async function handleAutocomplete(interaction, env) {
   const focused = options.find((o) => o.focused);
   const query = (focused?.value || '').toLowerCase();
 
-  const index = await getApprovedIndex(env);
-  const servers = index.filter((s) => s.name.toLowerCase().includes(query)).slice(0, 25);
+  const list = await env.DATA.list({ prefix: 'server:' });
+  const records = await Promise.all(list.keys.map((k) => env.DATA.get(k.name)));
+  const servers = records
+    .filter(Boolean)
+    .map((r) => JSON.parse(r))
+    .filter((s) => s.status === 'approved')
+    .filter((s) => s.name.toLowerCase().includes(query))
+    .slice(0, 25);
 
   return json({
     type: 8, // APPLICATION_COMMAND_AUTOCOMPLETE_RESULT
@@ -195,21 +247,11 @@ async function handleAutocomplete(interaction, env) {
 // ---------- Modal submissions ----------
 
 async function handleModalSubmit(interaction, env) {
-  if (interaction.data.custom_id !== 'addserver_modal') {
+  if (!interaction.data.custom_id.startsWith('addserver_modal:')) {
     return json(reply('Unknown form.'));
   }
 
-  const submitter = interaction.member?.user || interaction.user;
-
-  const existingPendingId = await env.DATA.get(`pending_by_user:${submitter?.id}`);
-  if (existingPendingId) {
-    return json(
-      reply(
-        'You already have a submission awaiting review. Please wait for a moderator to approve or reject it before submitting another.',
-        true
-      )
-    );
-  }
+  const game = decodeURIComponent(interaction.data.custom_id.split(':')[1]);
 
   const fields = {};
   for (const row of interaction.data.components) {
@@ -218,13 +260,14 @@ async function handleModalSubmit(interaction, env) {
     }
   }
 
-  const id = await generateUniqueId(env);
+  const id = crypto.randomUUID().slice(0, 8);
+  const submitter = interaction.member?.user || interaction.user;
 
   const server = {
     id,
     name: fields.server_name,
     region: fields.server_region,
-    game: fields.server_game,
+    game,
     about: fields.server_about,
     link: fields.server_link,
     status: 'pending',
@@ -234,7 +277,6 @@ async function handleModalSubmit(interaction, env) {
   };
 
   await env.DATA.put(`server:${id}`, JSON.stringify(server));
-  await env.DATA.put(`pending_by_user:${submitter?.id}`, id);
 
   // Post to the mod review channel with Approve/Reject buttons
   const embed = serverEmbed(server, 0xffaa00, 'Pending review');
@@ -265,6 +307,23 @@ async function handleModalSubmit(interaction, env) {
 
 async function handleComponent(interaction, env) {
   const customId = interaction.data.custom_id;
+
+  if (customId === 'addserver_game_select') {
+    const game = interaction.data.values[0];
+    return json({
+      type: 9, // MODAL
+      data: {
+        custom_id: `addserver_modal:${encodeURIComponent(game)}`,
+        title: `Add ${game} Server`.slice(0, 45),
+        components: [
+          textInputRow('server_name', 'Server Name', 1, true, 100),
+          textInputRow('server_region', 'Server Region', 1, true, 60),
+          textInputRow('server_about', 'About Server', 2, true, 500),
+          textInputRow('server_link', 'Server Discord Link', 1, true, 200),
+        ],
+      },
+    });
+  }
 
   if (customId.startsWith('approve_') || customId.startsWith('reject_')) {
     return handleApproval(interaction, env, customId);
@@ -297,17 +356,9 @@ async function handleApproval(interaction, env, customId) {
   const server = JSON.parse(raw);
   const modName = interaction.member?.user?.username || 'a moderator';
 
-  if (server.submittedBy) {
-    const lockedId = await env.DATA.get(`pending_by_user:${server.submittedBy}`);
-    if (lockedId === id) {
-      await env.DATA.delete(`pending_by_user:${server.submittedBy}`);
-    }
-  }
-
   if (isApprove) {
     server.status = 'approved';
     await env.DATA.put(`server:${id}`, JSON.stringify(server));
-    await addToApprovedIndex(env, server);
     const embed = serverEmbed(server, 0x2ecc71, `Approved by ${modName}`);
     return json({ type: 7, data: { embeds: [embed], components: [] } });
   } else {
@@ -335,6 +386,11 @@ async function handlePagination(interaction, env, customId) {
 }
 
 // ---------- Helpers ----------
+
+async function getGameList(env) {
+  const raw = await env.DATA.get('config:games');
+  return raw ? JSON.parse(raw) : [];
+}
 
 function textInputRow(customId, label, style, required, maxLength) {
   return {
@@ -368,72 +424,17 @@ function serverEmbed(server, color, statusLabel) {
 }
 
 async function getApprovedServers(env, game) {
-  let servers = await getApprovedIndex(env);
+  const list = await env.DATA.list({ prefix: 'server:' });
+  const records = await Promise.all(list.keys.map((k) => env.DATA.get(k.name)));
+  let servers = records.filter(Boolean).map((r) => JSON.parse(r)).filter((s) => s.status === 'approved');
 
   if (game && game.toLowerCase() !== 'all') {
     servers = servers.filter((s) => s.game.toLowerCase() === game.toLowerCase());
   }
 
+  servers.sort((a, b) => a.name.localeCompare(b.name));
   const totalPages = Math.max(1, Math.ceil(servers.length / PAGE_SIZE));
   return { servers, totalPages };
-}
-
-// ---------- Approved-servers index ----------
-// Reading/filtering every "server:" key from KV on each /serverlist, pagination
-// click, and autocomplete keystroke doesn't scale. This index keeps a single
-// sorted JSON array of approved servers under one KV key, updated whenever a
-// server is approved or removed. If the index key is missing (first run after
-// this update, or if it's ever lost) it's rebuilt once from a full scan.
-
-const APPROVED_INDEX_KEY = 'approved_index';
-
-function toIndexEntry(server) {
-  const { id, name, region, game, about, link } = server;
-  return { id, name, region, game, about, link };
-}
-
-async function getApprovedIndex(env) {
-  const raw = await env.DATA.get(APPROVED_INDEX_KEY);
-  if (raw) return JSON.parse(raw);
-
-  // Migration/repair path: rebuild from a full scan, then cache it.
-  const list = await env.DATA.list({ prefix: 'server:' });
-  const records = await Promise.all(list.keys.map((k) => env.DATA.get(k.name)));
-  const servers = records
-    .filter(Boolean)
-    .map((r) => JSON.parse(r))
-    .filter((s) => s.status === 'approved')
-    .map(toIndexEntry)
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  await env.DATA.put(APPROVED_INDEX_KEY, JSON.stringify(servers));
-  return servers;
-}
-
-async function addToApprovedIndex(env, server) {
-  const index = await getApprovedIndex(env);
-  const withoutExisting = index.filter((s) => s.id !== server.id);
-  withoutExisting.push(toIndexEntry(server));
-  withoutExisting.sort((a, b) => a.name.localeCompare(b.name));
-  await env.DATA.put(APPROVED_INDEX_KEY, JSON.stringify(withoutExisting));
-}
-
-async function removeFromApprovedIndex(env, id) {
-  const index = await getApprovedIndex(env);
-  const filtered = index.filter((s) => s.id !== id);
-  await env.DATA.put(APPROVED_INDEX_KEY, JSON.stringify(filtered));
-}
-
-// ---------- Collision-safe ID generation ----------
-
-async function generateUniqueId(env) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const candidate = crypto.randomUUID().slice(0, 8);
-    const existing = await env.DATA.get(`server:${candidate}`);
-    if (!existing) return candidate;
-  }
-  // Extremely unlikely fallback: full UUID, effectively collision-proof.
-  return crypto.randomUUID();
 }
 
 async function buildServerListResponse(env, game, page, isUpdate, precomputed) {
