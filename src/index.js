@@ -4,7 +4,7 @@ const API = 'https://discord.com/api/v10';
 const PAGE_SIZE = 5;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method !== 'POST') {
       return new Response('Discord bot is running.', { status: 200 });
     }
@@ -29,7 +29,7 @@ export default {
     }
 
     if (interaction.type === 2) {
-      return handleCommand(interaction, env);
+      return handleCommand(interaction, env, ctx);
     }
 
     if (interaction.type === 4) {
@@ -50,7 +50,7 @@ export default {
 
 // ---------- Slash commands ----------
 
-async function handleCommand(interaction, env) {
+async function handleCommand(interaction, env, ctx) {
   const name = interaction.data.name;
   const options = interaction.data.options || [];
   const getOpt = (n) => options.find((o) => o.name === n)?.value;
@@ -124,11 +124,76 @@ async function handleCommand(interaction, env) {
       await env.DATA.delete(`server:${id}`);
       return json(reply(`Removed **${server.name}** (${server.game}) from the server list.`, true));
     }
+
+    if (name === 'clear') {
+      const requesterId = interaction.member?.user?.id || interaction.user?.id;
+      if (requesterId !== env.OWNER_ID) {
+        return json(reply("You don't have permission to do this.", true));
+      }
+
+      const qty = getOpt('qty');
+      if (!qty || qty < 1 || qty > 100) {
+        return json(reply('Quantity must be between 1 and 100.', true));
+      }
+
+      const channelId = interaction.channel_id || interaction.channel?.id;
+      ctx.waitUntil(clearMessages(env, interaction, channelId, qty));
+
+      return json({ type: 5, data: { flags: 64 } }); // DEFERRED, ephemeral
+    }
   } catch (err) {
     return json(reply(`Error: ${err.message}`));
   }
 
   return json(reply('Unknown command.'));
+}
+
+// ---------- Clear command ----------
+
+async function clearMessages(env, interaction, channelId, qty) {
+  let resultText;
+
+  try {
+    const fetchRes = await discordApi(env, `/channels/${channelId}/messages?limit=${qty}`, {
+      method: 'GET',
+    });
+
+    if (!fetchRes.ok) {
+      resultText = 'Could not fetch messages. Make sure the bot has View Channel and Read Message History permissions here.';
+    } else {
+      const messages = await fetchRes.json();
+      const ids = messages.map((m) => m.id);
+
+      if (ids.length === 0) {
+        resultText = 'No messages to delete.';
+      } else if (ids.length === 1) {
+        const delRes = await discordApi(env, `/channels/${channelId}/messages/${ids[0]}`, {
+          method: 'DELETE',
+        });
+        resultText = delRes.ok ? 'Deleted 1 message.' : 'Failed to delete the message.';
+      } else {
+        const bulkRes = await discordApi(env, `/channels/${channelId}/messages/bulk-delete`, {
+          method: 'POST',
+          body: JSON.stringify({ messages: ids }),
+        });
+        resultText = bulkRes.ok
+          ? `Deleted ${ids.length} messages.`
+          : 'Bulk delete failed — messages older than 14 days cannot be bulk deleted, and the bot needs Manage Messages permission here.';
+      }
+    }
+  } catch (err) {
+    resultText = `Error while clearing messages: ${err.message}`;
+  }
+
+  await editOriginalResponse(env, interaction, resultText);
+}
+
+async function editOriginalResponse(env, interaction, content) {
+  await fetch(`${API}/webhooks/${env.DISCORD_APPLICATION_ID}/${interaction.token}/messages/@original`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
 }
 
 // ---------- Autocomplete ----------

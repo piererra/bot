@@ -55,6 +55,20 @@ const commands = [
       },
     ],
   },
+  {
+    name: 'clear',
+    description: 'Delete recent messages in this channel (owner only)',
+    options: [
+      {
+        name: 'qty',
+        description: 'Number of messages to delete (1-100)',
+        type: 4,
+        required: true,
+        min_value: 1,
+        max_value: 100,
+      },
+    ],
+  },
 ];
 
 const APPLICATION_ID = process.env.DISCORD_APPLICATION_ID;
