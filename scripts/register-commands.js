@@ -2,29 +2,7 @@
 const commands = [
   {
     name: 'ping',
-    description: 'Check if the bot is responsive',
-  },
-  {
-    name: 'save',
-    description: 'Save a value to storage',
-    options: [
-      { name: 'key', description: 'Key name', type: 3, required: true },
-      { name: 'value', description: 'Value to store', type: 3, required: true },
-    ],
-  },
-  {
-    name: 'load',
-    description: 'Load a saved value',
-    options: [{ name: 'key', description: 'Key name', type: 3, required: true }],
-  },
-  {
-    name: 'delete',
-    description: 'Delete a saved value',
-    options: [{ name: 'key', description: 'Key name', type: 3, required: true }],
-  },
-  {
-    name: 'list',
-    description: 'List all saved keys',
+    description: 'Check the bot\'s response latency',
   },
   {
     name: 'addserver',

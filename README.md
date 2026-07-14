@@ -10,11 +10,14 @@ buttons, modals, and autocomplete via Discord's Interactions Endpoint.
 ## Commands
 
 ### General
-- `/ping` — health check
-- `/save key value` — store a value in KV
-- `/load key` — retrieve a saved value
-- `/delete key` — remove a saved value
-- `/list` — list all saved keys
+- `/ping` — shows the bot's response latency (time between Discord creating the
+  interaction and the Worker replying), visible only to you.
+
+  **Note:** Discord bots cannot see a user's IP address or measure their
+  connection speed — Discord never exposes that data to bots, and there's no
+  way around it (any site claiming otherwise is either wrong or trying to
+  secretly log visitors, which this bot won't do). Latency is the only
+  legitimate "ping"-style metric available.
 
 ### Private server directory
 - `/addserver` — opens a form (Server Name, Region, Game, About, Discord Link).

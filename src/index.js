@@ -57,32 +57,9 @@ async function handleCommand(interaction, env, ctx) {
 
   try {
     if (name === 'ping') {
-      return json(reply('Pong!'));
-    }
-
-    if (name === 'save') {
-      const key = getOpt('key');
-      const value = getOpt('value');
-      await env.DATA.put(key, value);
-      return json(reply(`Saved **${key}**.`));
-    }
-
-    if (name === 'load') {
-      const key = getOpt('key');
-      const value = await env.DATA.get(key);
-      return json(reply(value ? `**${key}**: ${value}` : `No data found for **${key}**.`));
-    }
-
-    if (name === 'delete') {
-      const key = getOpt('key');
-      await env.DATA.delete(key);
-      return json(reply(`Deleted **${key}**.`));
-    }
-
-    if (name === 'list') {
-      const list = await env.DATA.list();
-      const keys = list.keys.map((k) => k.name);
-      return json(reply(keys.length ? `Saved keys:\n${keys.join(', ')}` : 'No saved keys yet.'));
+      const createdAt = snowflakeToTimestamp(interaction.id);
+      const latencyMs = Date.now() - createdAt;
+      return json(reply(`🏓 Pong! Latency: **${latencyMs}ms**`, true));
     }
 
     if (name === 'addserver') {
@@ -428,6 +405,11 @@ async function buildServerListResponse(env, game, page, isUpdate, precomputed) {
 
 function button(label, customId, disabled) {
   return { type: 2, style: 2, label, custom_id: customId, disabled };
+}
+
+function snowflakeToTimestamp(id) {
+  const DISCORD_EPOCH = 1420070400000n;
+  return Number((BigInt(id) >> 22n) + DISCORD_EPOCH);
 }
 
 function reply(content, ephemeral) {
