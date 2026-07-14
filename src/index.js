@@ -59,7 +59,7 @@ async function handleCommand(interaction, env, ctx) {
     if (name === 'ping') {
       const createdAt = snowflakeToTimestamp(interaction.id);
       const latencyMs = Date.now() - createdAt;
-      return json(reply(`🏓 Pong! Latency: **${latencyMs}ms**`, true));
+      return json(reply(`Latency: **${latencyMs}ms**`, true));
     }
 
     if (name === 'addserver') {
