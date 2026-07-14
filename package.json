@@ -4,9 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "register": "node scripts/register-commands.js"
+    "register": "node scripts/register-commands.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "discord-interactions": "^3.4.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.110.0"
   }
 }

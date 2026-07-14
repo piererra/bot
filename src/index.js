@@ -99,6 +99,7 @@ async function handleCommand(interaction, env, ctx) {
 
       const server = JSON.parse(raw);
       await env.DATA.delete(`server:${id}`);
+      await removeFromApprovedIndex(env, id);
       return json(reply(`Removed **${server.name}** (${server.game}) from the server list.`, true));
     }
 
@@ -180,14 +181,8 @@ async function handleAutocomplete(interaction, env) {
   const focused = options.find((o) => o.focused);
   const query = (focused?.value || '').toLowerCase();
 
-  const list = await env.DATA.list({ prefix: 'server:' });
-  const records = await Promise.all(list.keys.map((k) => env.DATA.get(k.name)));
-  const servers = records
-    .filter(Boolean)
-    .map((r) => JSON.parse(r))
-    .filter((s) => s.status === 'approved')
-    .filter((s) => s.name.toLowerCase().includes(query))
-    .slice(0, 25);
+  const index = await getApprovedIndex(env);
+  const servers = index.filter((s) => s.name.toLowerCase().includes(query)).slice(0, 25);
 
   return json({
     type: 8, // APPLICATION_COMMAND_AUTOCOMPLETE_RESULT
@@ -204,6 +199,18 @@ async function handleModalSubmit(interaction, env) {
     return json(reply('Unknown form.'));
   }
 
+  const submitter = interaction.member?.user || interaction.user;
+
+  const existingPendingId = await env.DATA.get(`pending_by_user:${submitter?.id}`);
+  if (existingPendingId) {
+    return json(
+      reply(
+        'You already have a submission awaiting review. Please wait for a moderator to approve or reject it before submitting another.',
+        true
+      )
+    );
+  }
+
   const fields = {};
   for (const row of interaction.data.components) {
     for (const comp of row.components) {
@@ -211,8 +218,7 @@ async function handleModalSubmit(interaction, env) {
     }
   }
 
-  const id = crypto.randomUUID().slice(0, 8);
-  const submitter = interaction.member?.user || interaction.user;
+  const id = await generateUniqueId(env);
 
   const server = {
     id,
@@ -228,6 +234,7 @@ async function handleModalSubmit(interaction, env) {
   };
 
   await env.DATA.put(`server:${id}`, JSON.stringify(server));
+  await env.DATA.put(`pending_by_user:${submitter?.id}`, id);
 
   // Post to the mod review channel with Approve/Reject buttons
   const embed = serverEmbed(server, 0xffaa00, 'Pending review');
@@ -290,9 +297,17 @@ async function handleApproval(interaction, env, customId) {
   const server = JSON.parse(raw);
   const modName = interaction.member?.user?.username || 'a moderator';
 
+  if (server.submittedBy) {
+    const lockedId = await env.DATA.get(`pending_by_user:${server.submittedBy}`);
+    if (lockedId === id) {
+      await env.DATA.delete(`pending_by_user:${server.submittedBy}`);
+    }
+  }
+
   if (isApprove) {
     server.status = 'approved';
     await env.DATA.put(`server:${id}`, JSON.stringify(server));
+    await addToApprovedIndex(env, server);
     const embed = serverEmbed(server, 0x2ecc71, `Approved by ${modName}`);
     return json({ type: 7, data: { embeds: [embed], components: [] } });
   } else {
@@ -353,17 +368,72 @@ function serverEmbed(server, color, statusLabel) {
 }
 
 async function getApprovedServers(env, game) {
-  const list = await env.DATA.list({ prefix: 'server:' });
-  const records = await Promise.all(list.keys.map((k) => env.DATA.get(k.name)));
-  let servers = records.filter(Boolean).map((r) => JSON.parse(r)).filter((s) => s.status === 'approved');
+  let servers = await getApprovedIndex(env);
 
   if (game && game.toLowerCase() !== 'all') {
     servers = servers.filter((s) => s.game.toLowerCase() === game.toLowerCase());
   }
 
-  servers.sort((a, b) => a.name.localeCompare(b.name));
   const totalPages = Math.max(1, Math.ceil(servers.length / PAGE_SIZE));
   return { servers, totalPages };
+}
+
+// ---------- Approved-servers index ----------
+// Reading/filtering every "server:" key from KV on each /serverlist, pagination
+// click, and autocomplete keystroke doesn't scale. This index keeps a single
+// sorted JSON array of approved servers under one KV key, updated whenever a
+// server is approved or removed. If the index key is missing (first run after
+// this update, or if it's ever lost) it's rebuilt once from a full scan.
+
+const APPROVED_INDEX_KEY = 'approved_index';
+
+function toIndexEntry(server) {
+  const { id, name, region, game, about, link } = server;
+  return { id, name, region, game, about, link };
+}
+
+async function getApprovedIndex(env) {
+  const raw = await env.DATA.get(APPROVED_INDEX_KEY);
+  if (raw) return JSON.parse(raw);
+
+  // Migration/repair path: rebuild from a full scan, then cache it.
+  const list = await env.DATA.list({ prefix: 'server:' });
+  const records = await Promise.all(list.keys.map((k) => env.DATA.get(k.name)));
+  const servers = records
+    .filter(Boolean)
+    .map((r) => JSON.parse(r))
+    .filter((s) => s.status === 'approved')
+    .map(toIndexEntry)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  await env.DATA.put(APPROVED_INDEX_KEY, JSON.stringify(servers));
+  return servers;
+}
+
+async function addToApprovedIndex(env, server) {
+  const index = await getApprovedIndex(env);
+  const withoutExisting = index.filter((s) => s.id !== server.id);
+  withoutExisting.push(toIndexEntry(server));
+  withoutExisting.sort((a, b) => a.name.localeCompare(b.name));
+  await env.DATA.put(APPROVED_INDEX_KEY, JSON.stringify(withoutExisting));
+}
+
+async function removeFromApprovedIndex(env, id) {
+  const index = await getApprovedIndex(env);
+  const filtered = index.filter((s) => s.id !== id);
+  await env.DATA.put(APPROVED_INDEX_KEY, JSON.stringify(filtered));
+}
+
+// ---------- Collision-safe ID generation ----------
+
+async function generateUniqueId(env) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = crypto.randomUUID().slice(0, 8);
+    const existing = await env.DATA.get(`server:${candidate}`);
+    if (!existing) return candidate;
+  }
+  // Extremely unlikely fallback: full UUID, effectively collision-proof.
+  return crypto.randomUUID();
 }
 
 async function buildServerListResponse(env, game, page, isUpdate, precomputed) {

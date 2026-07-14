@@ -22,7 +22,9 @@ buttons, modals, and autocomplete via Discord's Interactions Endpoint.
 ### Private server directory
 - `/addserver` — opens a form (Server Name, Region, Game, About, Discord Link).
   Submission is saved as **pending** and posted to the mod review channel with
-  Approve/Reject buttons.
+  Approve/Reject buttons. Each user can only have **one pending submission at
+  a time** — trying to submit again before a moderator reviews the first one
+  is blocked with a message telling them to wait.
 - `/serverlist [game]` — browse **approved** servers, 5 per page, with
   ⏮ ◀ ▶ ⏭ pagination buttons. Omit `game` to see all, or filter by game name.
 - `/removeserver` — moderator-only. Autocomplete dropdown of approved server
@@ -63,7 +65,11 @@ adding one at a time and re-tapping "+ Add" before saving can wipe unsaved rows.
 - Bot: copy/reset Bot Token
 
 ### 2. Push this repo to GitHub
+`node_modules/` is gitignored, so run `npm install` first — Cloudflare's
+GitHub integration installs dependencies itself on every deploy, it just
+needs `package.json`/`package-lock.json` in the repo, not the folder itself.
 ```
+npm install
 git init
 git add .
 git commit -m "Initial commit"
@@ -94,7 +100,16 @@ Discord Developer Portal → General Information → Interactions Endpoint URL:
 `https://YOUR-WORKER-NAME.YOUR-SUBDOMAIN.workers.dev`
 Discord will ping it to verify — should succeed once steps 4–5 are done.
 
-### 7. Register the slash commands
+### 7. (Optional) Local development
+`wrangler` is now a devDependency, so you can run the Worker locally or
+deploy from Termux without the GitHub integration:
+```
+npm run dev      # wrangler dev, local preview
+npm run deploy   # wrangler deploy, pushes straight to Cloudflare
+```
+This is optional — pushing to `main` still auto-deploys via step 4.
+
+### 8. Register the slash commands
 Needs Node installed in Termux: `pkg install nodejs`
 ```
 npm install
@@ -102,7 +117,7 @@ DISCORD_APPLICATION_ID=your_app_id DISCORD_BOT_TOKEN=your_bot_token npm run regi
 ```
 Re-run this whenever you add or rename a command — not needed for every deploy.
 
-### 8. Invite the bot
+### 9. Invite the bot
 OAuth2 → URL Generator → scopes: `bot`, `applications.commands`. Recommended
 bot permissions: **Send Messages**, **Embed Links**, **Manage Messages**
 (needed for `/clear` and posting to the mod channel).
@@ -113,3 +128,11 @@ bot permissions: **Send Messages**, **Embed Links**, **Manage Messages**
   handles that separately using the same bot token.
 - `/addserver`, `/serverlist`, and `/removeserver` all read/write KV keys under
   the `server:` prefix, stored as JSON with a `status` of `pending` or `approved`.
+- `approved_index` is a single KV key holding a sorted JSON array of all
+  approved servers. `/serverlist`, pagination, and `/removeserver`'s
+  autocomplete read from it instead of scanning every `server:` key, so they
+  stay fast as the list grows. It's kept in sync automatically on approve/
+  remove; if it's ever missing, the bot rebuilds it once from a full scan.
+- `pending_by_user:<userId>` tracks a user's in-review submission so they
+  can't submit a second one before the first is approved or rejected. It's
+  deleted automatically once a moderator acts on the submission.
