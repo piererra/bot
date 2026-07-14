@@ -1,9 +1,13 @@
-name = "discord-worker-bot"
+name = "bot"
 main = "src/index.js"
 compatibility_date = "2024-09-01"
 
-# Create a KV namespace in the Cloudflare dashboard first
-# (Workers & Pages -> KV -> Create namespace), then paste its ID below.
 kv_namespaces = [
   { binding = "DATA", id = "50e1d0a1b12d4206b5e1e3c50db2068b" }
 ]
+
+[vars]
+DISCORD_APPLICATION_ID = "1468799244138713101"
+MOD_CHANNEL_ID = "1471831034801950926"
+MOD_ROLE_ID = "1468539537352294543"
+OWNER_ID = "1413503870373462070"
