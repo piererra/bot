@@ -42,6 +42,19 @@ const commands = [
       },
     ],
   },
+  {
+    name: 'removeserver',
+    description: 'Remove a server listing (moderators only)',
+    options: [
+      {
+        name: 'server',
+        description: 'Start typing the server name',
+        type: 3,
+        required: true,
+        autocomplete: true,
+      },
+    ],
+  },
 ];
 
 const APPLICATION_ID = process.env.DISCORD_APPLICATION_ID;

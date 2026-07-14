@@ -32,6 +32,10 @@ export default {
       return handleCommand(interaction, env);
     }
 
+    if (interaction.type === 4) {
+      return handleAutocomplete(interaction, env);
+    }
+
     if (interaction.type === 3) {
       return handleComponent(interaction, env);
     }
@@ -103,11 +107,52 @@ async function handleCommand(interaction, env) {
       const page = 0;
       return json(await buildServerListResponse(env, game, page, false));
     }
+
+    if (name === 'removeserver') {
+      const memberRoles = interaction.member?.roles || [];
+      if (!memberRoles.includes(env.MOD_ROLE_ID)) {
+        return json(reply("You don't have permission to do this.", true));
+      }
+
+      const id = getOpt('server');
+      const raw = await env.DATA.get(`server:${id}`);
+      if (!raw) {
+        return json(reply('That server could not be found (it may already be removed).', true));
+      }
+
+      const server = JSON.parse(raw);
+      await env.DATA.delete(`server:${id}`);
+      return json(reply(`Removed **${server.name}** (${server.game}) from the server list.`, true));
+    }
   } catch (err) {
     return json(reply(`Error: ${err.message}`));
   }
 
   return json(reply('Unknown command.'));
+}
+
+// ---------- Autocomplete ----------
+
+async function handleAutocomplete(interaction, env) {
+  const options = interaction.data.options || [];
+  const focused = options.find((o) => o.focused);
+  const query = (focused?.value || '').toLowerCase();
+
+  const list = await env.DATA.list({ prefix: 'server:' });
+  const records = await Promise.all(list.keys.map((k) => env.DATA.get(k.name)));
+  const servers = records
+    .filter(Boolean)
+    .map((r) => JSON.parse(r))
+    .filter((s) => s.status === 'approved')
+    .filter((s) => s.name.toLowerCase().includes(query))
+    .slice(0, 25);
+
+  return json({
+    type: 8, // APPLICATION_COMMAND_AUTOCOMPLETE_RESULT
+    data: {
+      choices: servers.map((s) => ({ name: `${s.name} (${s.game})`, value: s.id })),
+    },
+  });
 }
 
 // ---------- Modal submissions ----------
