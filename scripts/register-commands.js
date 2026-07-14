@@ -26,6 +26,22 @@ const commands = [
     name: 'list',
     description: 'List all saved keys',
   },
+  {
+    name: 'addserver',
+    description: 'Submit a private server for moderator review',
+  },
+  {
+    name: 'serverlist',
+    description: 'Browse approved private servers',
+    options: [
+      {
+        name: 'game',
+        description: 'Filter by game name (leave blank for all)',
+        type: 3,
+        required: false,
+      },
+    ],
+  },
 ];
 
 const APPLICATION_ID = process.env.DISCORD_APPLICATION_ID;
