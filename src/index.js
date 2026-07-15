@@ -385,16 +385,6 @@ async function handleModalSubmit(interaction, env) {
     return json(reply('Submitted, but I could not notify the mod channel. Ask an admin to check the bot permissions.', true));
   }
 
-  // Notify the public submission log channel
-  if (env.SUBMISSION_CHANNEL_ID) {
-    await discordApi(env, `/channels/${env.SUBMISSION_CHANNEL_ID}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({
-        content: `📥 **${server.name}** (${server.game}) was just submitted by <@${server.submittedBy}> and is awaiting moderator review.`,
-      }),
-    });
-  }
-
   return json(reply('Your server submission has been sent for moderator review. Thanks!', true));
 }
 
@@ -455,6 +445,17 @@ async function handleApproval(interaction, env, customId) {
     server.status = 'approved';
     await env.DATA.put(`server:${id}`, JSON.stringify(server));
     const embed = serverEmbed(server, 0x2ecc71, `Approved by ${modName}`);
+
+    if (env.SUBMISSION_CHANNEL_ID) {
+      await discordApi(env, `/channels/${env.SUBMISSION_CHANNEL_ID}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          content: `✅ **${server.name}** (${server.game}) has been approved and is now live in \`/serverlist\`.`,
+          embeds: [embed],
+        }),
+      });
+    }
+
     return json({ type: 7, data: { embeds: [embed], components: [] } });
   } else {
     await env.DATA.delete(`server:${id}`);
