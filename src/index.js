@@ -97,26 +97,34 @@ async function handleCommand(interaction, env, ctx) {
       }
 
       const sub = interaction.data.options[0];
-      const gameName = sub.options.find((o) => o.name === 'name')?.value?.trim();
+      const getSubOpt = (n) => sub.options.find((o) => o.name === n)?.value;
+      const gameName = getSubOpt('name')?.trim();
       const games = await getGameList(env);
 
       if (sub.name === 'add') {
+        const icon = getSubOpt('icon')?.trim();
         if (gameName.toLowerCase() === 'other') {
           return json(reply('"Other" is reserved and always shown automatically — no need to add it.', true));
+        }
+        if (icon && !isValidUrl(icon)) {
+          return json(reply('That icon URL doesn\'t look valid. It should be a direct image link starting with https://.', true));
+        }
+        const existing = games.find((g) => g.name.toLowerCase() === gameName.toLowerCase());
+        if (existing) {
+          existing.icon = icon || existing.icon;
+          await env.DATA.put('config:games', JSON.stringify(games));
+          return json(reply(`Updated **${gameName}**${icon ? ' with a new icon' : ''}.`, true));
         }
         if (games.length >= 24) {
           return json(reply('The game list is full (24 max — 1 slot is reserved for "Other").', true));
         }
-        if (games.some((g) => g.toLowerCase() === gameName.toLowerCase())) {
-          return json(reply(`**${gameName}** is already in the list.`, true));
-        }
-        games.push(gameName);
+        games.push({ name: gameName, icon: icon || null });
         await env.DATA.put('config:games', JSON.stringify(games));
-        return json(reply(`Added **${gameName}** to the game list.`, true));
+        return json(reply(`Added **${gameName}** to the game list${icon ? ' with an icon' : ''}.`, true));
       }
 
       if (sub.name === 'remove') {
-        const filtered = games.filter((g) => g.toLowerCase() !== gameName.toLowerCase());
+        const filtered = games.filter((g) => g.name.toLowerCase() !== gameName.toLowerCase());
         if (filtered.length === games.length) {
           return json(reply(`**${gameName}** wasn't found in the list.`, true));
         }
@@ -125,8 +133,9 @@ async function handleCommand(interaction, env, ctx) {
       }
 
       if (sub.name === 'list') {
-        const sorted = [...games].sort((a, b) => a.localeCompare(b));
-        return json(reply(sorted.length ? `Current games:\n${sorted.join(', ')}\n\n"Other" is always shown too.` : 'No games configured yet.', true));
+        const sorted = [...games].sort((a, b) => a.name.localeCompare(b.name));
+        const lines = sorted.map((g) => `${g.name}${g.icon ? ' 🖼️' : ''}`);
+        return json(reply(lines.length ? `Current games:\n${lines.join(', ')}\n\n"Other" is always shown too.` : 'No games configured yet.', true));
       }
     }
 
@@ -400,14 +409,32 @@ async function handlePagination(interaction, env, customId) {
 // ---------- Helpers ----------
 
 function buildGameOptions(games) {
-  const sorted = [...games].sort((a, b) => a.localeCompare(b));
-  const withOther = [...sorted, 'Other'];
-  return withOther.slice(0, 25).map((g) => ({ label: g, value: g }));
+  const sorted = [...games].sort((a, b) => a.name.localeCompare(b.name));
+  const names = sorted.map((g) => g.name);
+  const withOther = [...names, 'Other'];
+  return withOther.slice(0, 25).map((n) => ({ label: n, value: n }));
 }
 
 async function getGameList(env) {
   const raw = await env.DATA.get('config:games');
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  const parsed = JSON.parse(raw);
+  // Backward-compatible: older entries were plain strings, not {name, icon} objects.
+  return parsed.map((g) => (typeof g === 'string' ? { name: g, icon: null } : g));
+}
+
+function getGameIcon(games, gameName) {
+  const match = games.find((g) => g.name.toLowerCase() === gameName.toLowerCase());
+  return match?.icon || null;
+}
+
+function isValidUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 function textInputRow(customId, label, style, required, maxLength) {
@@ -441,17 +468,33 @@ function serverEmbed(server, color, statusLabel) {
   };
 }
 
-function serverCardEmbed(server) {
+const GAME_COLOR_PALETTE = [0x5865f2, 0xeb459e, 0x57f287, 0xfee75c, 0xed4245, 0x00b0f4, 0xff922b, 0x9b59b6, 0x2ecc71, 0xe67e22];
+
+function colorForGame(gameName) {
+  let hash = 0;
+  for (let i = 0; i < gameName.length; i++) {
+    hash = (hash * 31 + gameName.charCodeAt(i)) >>> 0;
+  }
+  return GAME_COLOR_PALETTE[hash % GAME_COLOR_PALETTE.length];
+}
+
+function serverCardEmbed(server, iconUrl) {
   const about = server.about.length > 150 ? `${server.about.slice(0, 150)}...` : server.about;
-  return {
+  const embed = {
     title: server.name,
-    color: 0x5865f2,
+    color: colorForGame(server.game),
     fields: [
       { name: 'Game', value: server.game, inline: true },
-      { name: 'Region', value: server.region, inline: true },
+      { name: 'Region', value: `🌍 ${server.region}`, inline: true },
+      { name: 'Status', value: '🟢 Active', inline: true },
       { name: 'About', value: about },
     ],
+    footer: { text: '🎮 Private Server Directory' },
   };
+  if (iconUrl) {
+    embed.thumbnail = { url: iconUrl };
+  }
+  return embed;
 }
 
 async function getApprovedServers(env, game) {
@@ -472,13 +515,14 @@ async function buildServerListResponse(env, game, page, isUpdate, precomputed) {
   const { servers, totalPages } = precomputed || (await getApprovedServers(env, game));
   const start = page * PAGE_SIZE;
   const pageServers = servers.slice(start, start + PAGE_SIZE);
+  const games = await getGameList(env);
 
   const title = game.toLowerCase() === 'all' ? '**Available Servers**' : `**Available Servers — ${game}**`;
   const summary = `${servers.length} server${servers.length === 1 ? '' : 's'} found • Page ${page + 1} of ${totalPages}`;
   const content = `${title}\n${summary}`;
 
   const embeds = pageServers.length
-    ? pageServers.map(serverCardEmbed)
+    ? pageServers.map((s) => serverCardEmbed(s, getGameIcon(games, s.game)))
     : [{ description: 'No approved servers found.', color: 0x5865f2 }];
 
   const components = [];

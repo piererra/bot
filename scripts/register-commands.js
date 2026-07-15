@@ -14,9 +14,12 @@ const commands = [
     options: [
       {
         name: 'add',
-        description: 'Add a game to the list',
+        description: 'Add a game to the list (or update its icon if it already exists)',
         type: 1, // SUB_COMMAND
-        options: [{ name: 'name', description: 'Game name', type: 3, required: true }],
+        options: [
+          { name: 'name', description: 'Game name', type: 3, required: true },
+          { name: 'icon', description: 'Direct image URL for the thumbnail (optional)', type: 3, required: false },
+        ],
       },
       {
         name: 'remove',
