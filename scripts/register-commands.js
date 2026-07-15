@@ -10,7 +10,7 @@ const commands = [
   },
   {
     name: 'managegames',
-    description: 'Manage the game list used in /addserver (owner only)',
+    description: 'Manage the game list used in /addserver (Need Permissions)',
     options: [
       {
         name: 'add',
@@ -45,7 +45,7 @@ const commands = [
   },
   {
     name: 'removeserver',
-    description: 'Remove a server listing (moderators only)',
+    description: 'Remove a server listing (Need Permissions)',
     options: [
       {
         name: 'server',
@@ -58,7 +58,7 @@ const commands = [
   },
   {
     name: 'clear',
-    description: 'Delete recent messages in this channel (owner only)',
+    description: 'Delete recent messages in this channel (Need Permissions)',
     options: [
       {
         name: 'qty',
