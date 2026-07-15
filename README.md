@@ -39,6 +39,11 @@ buttons, modals, and autocomplete via Discord's Interactions Endpoint.
 click Approve/Reject on submissions posted in the mod channel. Approving marks
 the server visible in `/serverlist`; rejecting deletes the submission.
 
+Every server embed — in `/serverlist`, the mod channel decision message, and
+the submission-approved log post — includes a timestamp for when it was
+generated. Approved-server embeds also show that game's configured icon
+(from `/managegames add`) as a thumbnail, when one is set.
+
 ### Moderation
 - `/clear qty` — owner-only. Deletes the most recent `qty` (1–100) messages in
   the channel it's run in. Messages older than 14 days can't be bulk-deleted
@@ -58,6 +63,7 @@ and secrets**. None of these belong in `wrangler.toml` or the git repo.
 | `MOD_CHANNEL_ID` | Channel where pending server submissions get posted | Plain text |
 | `MOD_ROLE_ID` | Role allowed to Approve/Reject and use `/removeserver` | Plain text |
 | `OWNER_ID` | Your Discord user ID — only this user can run `/clear` | Plain text |
+| `SUBMISSION_CHANNEL_ID` | Channel where approved-server announcements get posted (optional — skipped if unset) | Plain text |
 
 Add them all in one pass and hit **Save and deploy** once at the end —
 adding one at a time and re-tapping "+ Add" before saving can wipe unsaved rows.

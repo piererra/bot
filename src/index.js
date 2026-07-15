@@ -452,7 +452,9 @@ async function handleApproval(interaction, env, customId) {
   if (isApprove) {
     server.status = 'approved';
     await env.DATA.put(`server:${id}`, JSON.stringify(server));
-    const embed = serverEmbed(server, 0x2ecc71, `Approved by ${modName}`);
+    const games = await getGameList(env);
+    const iconUrl = getGameIcon(games, server.game);
+    const embed = serverEmbed(server, 0x2ecc71, `Approved by ${modName}`, iconUrl);
 
     if (env.SUBMISSION_CHANNEL_ID) {
       await discordApi(env, `/channels/${env.SUBMISSION_CHANNEL_ID}/messages`, {
@@ -536,8 +538,8 @@ function textInputRow(customId, label, style, required, maxLength) {
   };
 }
 
-function serverEmbed(server, color, statusLabel) {
-  return {
+function serverEmbed(server, color, statusLabel, iconUrl) {
+  const embed = {
     title: server.name,
     color,
     fields: [
@@ -548,7 +550,12 @@ function serverEmbed(server, color, statusLabel) {
       { name: 'Discord Link', value: server.link },
     ],
     footer: { text: `Submitted by ${server.submittedByName} • ID: ${server.id}` },
+    timestamp: new Date().toISOString(),
   };
+  if (iconUrl) {
+    embed.thumbnail = { url: iconUrl };
+  }
+  return embed;
 }
 
 const GAME_COLOR_PALETTE = [0x5865f2, 0xeb459e, 0x57f287, 0xfee75c, 0xed4245, 0x00b0f4, 0xff922b, 0x9b59b6, 0x2ecc71, 0xe67e22];
@@ -572,6 +579,7 @@ function serverCardEmbed(server, iconUrl) {
       { name: 'About', value: about },
     ],
     footer: { text: '🎮 Private Server Directory' },
+    timestamp: new Date().toISOString(),
   };
   if (iconUrl) {
     embed.thumbnail = { url: iconUrl };
