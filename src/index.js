@@ -81,7 +81,7 @@ async function handleCommand(interaction, env, ctx) {
                   type: 3, // STRING_SELECT
                   custom_id: 'addserver_game_select',
                   placeholder: 'Choose a game',
-                  options: games.slice(0, 25).map((g) => ({ label: g, value: g })),
+                  options: buildGameOptions(games),
                 },
               ],
             },
@@ -101,8 +101,11 @@ async function handleCommand(interaction, env, ctx) {
       const games = await getGameList(env);
 
       if (sub.name === 'add') {
-        if (games.length >= 25) {
-          return json(reply('The game list is full (25 max — a Discord dropdown limit).', true));
+        if (gameName.toLowerCase() === 'other') {
+          return json(reply('"Other" is reserved and always shown automatically — no need to add it.', true));
+        }
+        if (games.length >= 24) {
+          return json(reply('The game list is full (24 max — 1 slot is reserved for "Other").', true));
         }
         if (games.some((g) => g.toLowerCase() === gameName.toLowerCase())) {
           return json(reply(`**${gameName}** is already in the list.`, true));
@@ -122,7 +125,8 @@ async function handleCommand(interaction, env, ctx) {
       }
 
       if (sub.name === 'list') {
-        return json(reply(games.length ? `Current games:\n${games.join(', ')}` : 'No games configured yet.', true));
+        const sorted = [...games].sort((a, b) => a.localeCompare(b));
+        return json(reply(sorted.length ? `Current games:\n${sorted.join(', ')}\n\n"Other" is always shown too.` : 'No games configured yet.', true));
       }
     }
 
@@ -386,6 +390,12 @@ async function handlePagination(interaction, env, customId) {
 }
 
 // ---------- Helpers ----------
+
+function buildGameOptions(games) {
+  const sorted = [...games].sort((a, b) => a.localeCompare(b));
+  const withOther = [...sorted, 'Other'];
+  return withOther.slice(0, 25).map((g) => ({ label: g, value: g }));
+}
 
 async function getGameList(env) {
   const raw = await env.DATA.get('config:games');
