@@ -54,6 +54,25 @@ async function handleCommand(interaction, env, ctx) {
   const name = interaction.data.name;
   const options = interaction.data.options || [];
   const getOpt = (n) => options.find((o) => o.name === n)?.value;
+  const userId = interaction.member?.user?.id || interaction.user?.id;
+
+  if (userId !== env.OWNER_ID) {
+    const cooldownSeconds = name === 'addserver' ? 3600 : 30;
+    const cooldownKey = `cooldown:${userId}:${name}`;
+    const existing = await env.DATA.get(cooldownKey);
+
+    if (existing) {
+      const expiresAt = parseInt(existing, 10);
+      const remainingMs = expiresAt - Date.now();
+      if (remainingMs > 0) {
+        return json(reply(`This command is on cooldown. Try again in ${formatDuration(remainingMs)}.`, true));
+      }
+    }
+
+    await env.DATA.put(cooldownKey, String(Date.now() + cooldownSeconds * 1000), {
+      expirationTtl: cooldownSeconds,
+    });
+  }
 
   try {
     if (name === 'ping') {
@@ -366,6 +385,16 @@ async function handleModalSubmit(interaction, env) {
     return json(reply('Submitted, but I could not notify the mod channel. Ask an admin to check the bot permissions.', true));
   }
 
+  // Notify the public submission log channel
+  if (env.SUBMISSION_CHANNEL_ID) {
+    await discordApi(env, `/channels/${env.SUBMISSION_CHANNEL_ID}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        content: `📥 **${server.name}** (${server.game}) was just submitted by <@${server.submittedBy}> and is awaiting moderator review.`,
+      }),
+    });
+  }
+
   return json(reply('Your server submission has been sent for moderator review. Thanks!', true));
 }
 
@@ -531,7 +560,6 @@ function serverCardEmbed(server, iconUrl) {
     fields: [
       { name: 'Game', value: server.game, inline: true },
       { name: 'Region', value: `🌍 ${server.region}`, inline: true },
-      { name: 'Status', value: '🟢 Active', inline: true },
       { name: 'About', value: about },
     ],
     footer: { text: '🎮 Private Server Directory' },
@@ -601,6 +629,17 @@ async function buildServerListResponse(env, game, page, isUpdate, precomputed) {
 
 function button(label, customId, disabled) {
   return { type: 2, style: 2, label, custom_id: customId, disabled };
+}
+
+function formatDuration(ms) {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function snowflakeToTimestamp(id) {
