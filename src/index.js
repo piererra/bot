@@ -37,7 +37,7 @@ export default {
     }
 
     if (interaction.type === 3) {
-      return handleComponent(interaction, env);
+      return handleComponent(interaction, env, ctx);
     }
 
     if (interaction.type === 5) {
@@ -390,11 +390,19 @@ async function handleModalSubmit(interaction, env) {
 
 // ---------- Buttons ----------
 
-async function handleComponent(interaction, env) {
+async function handleComponent(interaction, env, ctx) {
   const customId = interaction.data.custom_id;
 
   if (customId === 'addserver_game_select') {
     const game = interaction.data.values[0];
+
+    // Delete the ephemeral dropdown message right after the modal opens
+    ctx.waitUntil(
+      fetch(`${API}/webhooks/${env.DISCORD_APPLICATION_ID}/${interaction.token}/messages/@original`, {
+        method: 'DELETE',
+      })
+    );
+
     return json({
       type: 9, // MODAL
       data: {
