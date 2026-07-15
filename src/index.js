@@ -133,9 +133,7 @@ async function handleCommand(interaction, env, ctx) {
       }
 
       if (sub.name === 'list') {
-        const sorted = [...games].sort((a, b) => a.name.localeCompare(b.name));
-        const lines = sorted.map((g) => `${g.name}${g.icon ? ' 🖼️' : ''}`);
-        return json(reply(lines.length ? `Current games:\n${lines.join(', ')}\n\n"Other" is always shown too.` : 'No games configured yet.', true));
+        return json(buildGameListEmbed(games));
       }
     }
 
@@ -168,9 +166,13 @@ async function handleCommand(interaction, env, ctx) {
         return json(reply("You don't have permission to do this.", true));
       }
 
-      const qty = getOpt('qty');
-      if (!qty || qty < 1 || qty > 100) {
-        return json(reply('Quantity must be between 1 and 100.', true));
+      const qtyInput = getOpt('qty');
+      let qty = 100; // default: delete as many as allowed when not specified
+      if (qtyInput !== undefined) {
+        if (qtyInput < 1 || qtyInput > 100) {
+          return json(reply('Quantity must be between 1 and 100.', true));
+        }
+        qty = qtyInput;
       }
 
       const channelId = interaction.channel_id || interaction.channel?.id;
@@ -236,25 +238,68 @@ async function editOriginalResponse(env, interaction, content) {
 // ---------- Autocomplete ----------
 
 async function handleAutocomplete(interaction, env) {
-  const options = interaction.data.options || [];
-  const focused = options.find((o) => o.focused);
-  const query = (focused?.value || '').toLowerCase();
+  const commandName = interaction.data.name;
 
-  const list = await env.DATA.list({ prefix: 'server:' });
-  const records = await Promise.all(list.keys.map((k) => env.DATA.get(k.name)));
-  const servers = records
-    .filter(Boolean)
-    .map((r) => JSON.parse(r))
-    .filter((s) => s.status === 'approved')
-    .filter((s) => s.name.toLowerCase().includes(query))
-    .slice(0, 25);
+  if (commandName === 'removeserver') {
+    const options = interaction.data.options || [];
+    const focused = options.find((o) => o.focused);
+    const query = (focused?.value || '').toLowerCase();
 
-  return json({
-    type: 8, // APPLICATION_COMMAND_AUTOCOMPLETE_RESULT
+    const list = await env.DATA.list({ prefix: 'server:' });
+    const records = await Promise.all(list.keys.map((k) => env.DATA.get(k.name)));
+    const servers = records
+      .filter(Boolean)
+      .map((r) => JSON.parse(r))
+      .filter((s) => s.status === 'approved')
+      .filter((s) => s.name.toLowerCase().includes(query))
+      .slice(0, 25);
+
+    return json({
+      type: 8,
+      data: { choices: servers.map((s) => ({ name: `${s.name} (${s.game})`, value: s.id })) },
+    });
+  }
+
+  if (commandName === 'managegames') {
+    const sub = interaction.data.options[0];
+    if (sub.name === 'remove') {
+      const focused = sub.options.find((o) => o.focused);
+      const query = (focused?.value || '').toLowerCase();
+
+      const games = await getGameList(env);
+      const matches = games
+        .filter((g) => g.name.toLowerCase().includes(query))
+        .slice(0, 25);
+
+      return json({
+        type: 8,
+        data: { choices: matches.map((g) => ({ name: g.name, value: g.name })) },
+      });
+    }
+  }
+
+  return json({ type: 8, data: { choices: [] } });
+}
+
+function buildGameListEmbed(games) {
+  const sorted = [...games].sort((a, b) => a.name.localeCompare(b.name));
+  const lines = sorted.map((g) => `${g.icon ? '🖼️' : '▫️'} ${g.name}`);
+  lines.push('▫️ Other _(always shown, reserved)_');
+
+  return {
+    type: 4,
     data: {
-      choices: servers.map((s) => ({ name: `${s.name} (${s.game})`, value: s.id })),
+      flags: 64,
+      embeds: [
+        {
+          title: '🎮 Game List',
+          color: 0x5865f2,
+          description: lines.join('\n'),
+          footer: { text: `${sorted.length}/24 games configured • 🖼️ = has an icon` },
+        },
+      ],
     },
-  });
+  };
 }
 
 // ---------- Modal submissions ----------

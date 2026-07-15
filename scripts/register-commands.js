@@ -25,7 +25,7 @@ const commands = [
         name: 'remove',
         description: 'Remove a game from the list',
         type: 1,
-        options: [{ name: 'name', description: 'Game name', type: 3, required: true }],
+        options: [{ name: 'name', description: 'Start typing the game name', type: 3, required: true, autocomplete: true }],
       },
       {
         name: 'list',
@@ -65,9 +65,9 @@ const commands = [
     options: [
       {
         name: 'qty',
-        description: 'Number of messages to delete (1-100)',
+        description: 'Number of messages to delete (1-100). Leave blank to delete up to 100.',
         type: 4,
-        required: true,
+        required: false,
         min_value: 1,
         max_value: 100,
       },
