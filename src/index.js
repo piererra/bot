@@ -269,7 +269,7 @@ async function handleModalSubmit(interaction, env) {
     region: fields.server_region,
     game,
     about: fields.server_about,
-    link: fields.server_link,
+    link: normalizeLink(fields.server_link),
     status: 'pending',
     submittedBy: submitter?.id,
     submittedByName: submitter?.username || 'Unknown',
@@ -319,7 +319,7 @@ async function handleComponent(interaction, env) {
           textInputRow('server_name', 'Server Name', 1, true, 100),
           textInputRow('server_region', 'Server Region', 1, true, 60),
           textInputRow('server_about', 'About Server', 2, true, 500),
-          textInputRow('server_link', 'Server Discord Link', 1, true, 200),
+          textInputRow('server_link', 'Server Discord Invite Links', 1, true, 200),
         ],
       },
     });
@@ -481,6 +481,14 @@ function button(label, customId, disabled) {
 function snowflakeToTimestamp(id) {
   const DISCORD_EPOCH = 1420070400000n;
   return Number((BigInt(id) >> 22n) + DISCORD_EPOCH);
+}
+
+function normalizeLink(link) {
+  const trimmed = (link || '').trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
 }
 
 function reply(content, ephemeral) {
