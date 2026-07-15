@@ -266,6 +266,14 @@ async function handleModalSubmit(interaction, env) {
 
   const id = crypto.randomUUID().slice(0, 8);
   const submitter = interaction.member?.user || interaction.user;
+  const normalizedLink = normalizeLink(fields.server_link);
+
+  if (!isValidDiscordInvite(normalizedLink)) {
+    return json(reply(
+      "That doesn't look like a valid Discord invite link. It needs to be something like `discord.gg/yourcode` or `discord.com/invite/yourcode`. Please run `/addserver` again with a valid link.",
+      true
+    ));
+  }
 
   const server = {
     id,
@@ -273,7 +281,7 @@ async function handleModalSubmit(interaction, env) {
     region: fields.server_region,
     game,
     about: fields.server_about,
-    link: normalizeLink(fields.server_link),
+    link: normalizedLink,
     status: 'pending',
     submittedBy: submitter?.id,
     submittedByName: submitter?.username || 'Unknown',
@@ -499,6 +507,27 @@ function normalizeLink(link) {
     return trimmed;
   }
   return `https://${trimmed}`;
+}
+
+function isValidDiscordInvite(link) {
+  let url;
+  try {
+    url = new URL(link);
+  } catch {
+    return false;
+  }
+
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+
+  if (host === 'discord.gg') {
+    return /^\/[a-zA-Z0-9-]{2,}\/?$/.test(url.pathname);
+  }
+
+  if (host === 'discord.com' || host === 'discordapp.com') {
+    return /^\/invite\/[a-zA-Z0-9-]{2,}\/?$/.test(url.pathname);
+  }
+
+  return false;
 }
 
 function reply(content, ephemeral) {
