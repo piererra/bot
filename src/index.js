@@ -441,6 +441,19 @@ function serverEmbed(server, color, statusLabel) {
   };
 }
 
+function serverCardEmbed(server) {
+  const about = server.about.length > 150 ? `${server.about.slice(0, 150)}...` : server.about;
+  return {
+    title: server.name,
+    color: 0x5865f2,
+    fields: [
+      { name: 'Game', value: server.game, inline: true },
+      { name: 'Region', value: server.region, inline: true },
+      { name: 'About', value: about },
+    ],
+  };
+}
+
 async function getApprovedServers(env, game) {
   const list = await env.DATA.list({ prefix: 'server:' });
   const records = await Promise.all(list.keys.map((k) => env.DATA.get(k.name)));
@@ -460,35 +473,40 @@ async function buildServerListResponse(env, game, page, isUpdate, precomputed) {
   const start = page * PAGE_SIZE;
   const pageServers = servers.slice(start, start + PAGE_SIZE);
 
-  const title = game.toLowerCase() === 'all' ? 'Available Servers' : `Available Servers — ${game}`;
-  const embed = {
-    title,
-    color: 0x5865f2,
-    description: pageServers.length
-      ? pageServers
-          .map(
-            (s) =>
-              `**${s.name}** — ${s.game} (${s.region})\n${s.about}\n${s.link}`
-          )
-          .join('\n\n')
-      : 'No approved servers found.',
-    footer: { text: `Page ${page + 1} of ${totalPages}` },
-  };
+  const title = game.toLowerCase() === 'all' ? '**Available Servers**' : `**Available Servers — ${game}**`;
+  const summary = `${servers.length} server${servers.length === 1 ? '' : 's'} found • Page ${page + 1} of ${totalPages}`;
+  const content = `${title}\n${summary}`;
+
+  const embeds = pageServers.length
+    ? pageServers.map(serverCardEmbed)
+    : [{ description: 'No approved servers found.', color: 0x5865f2 }];
+
+  const components = [];
+
+  if (pageServers.length) {
+    components.push({
+      type: 1,
+      components: pageServers.map((s) => ({
+        type: 2,
+        style: 5, // LINK
+        label: `Join ${s.name}`.slice(0, 80),
+        url: s.link,
+      })),
+    });
+  }
 
   const encodedGame = encodeURIComponent(game);
-  const components = [
-    {
-      type: 1,
-      components: [
-        button('⏮', `slpage:first:${page}:${encodedGame}`, page === 0),
-        button('◀', `slpage:prev:${page}:${encodedGame}`, page === 0),
-        button('▶', `slpage:next:${page}:${encodedGame}`, page >= totalPages - 1),
-        button('⏭', `slpage:last:${page}:${encodedGame}`, page >= totalPages - 1),
-      ],
-    },
-  ];
+  components.push({
+    type: 1,
+    components: [
+      button('⏮', `slpage:first:${page}:${encodedGame}`, page === 0),
+      button('◀', `slpage:prev:${page}:${encodedGame}`, page === 0),
+      button('▶', `slpage:next:${page}:${encodedGame}`, page >= totalPages - 1),
+      button('⏭', `slpage:last:${page}:${encodedGame}`, page >= totalPages - 1),
+    ],
+  });
 
-  const data = { embeds: [embed], components };
+  const data = { content, embeds, components };
   return isUpdate ? { type: 7, data } : { type: 4, data };
 }
 
